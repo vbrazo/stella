@@ -56,7 +56,7 @@ Concierge                    Qualifier                     Closer
                                  |-- Ask Q2 (objection)       |
                                  |-- Ask Q3 (LinkedIn)        |
                                  |                            |
-                                 +-- RECOMMENDING ---------->|
+                                 +-- RECOMMENDING ----------->|
                                                               |-- Run recommender engine
                                                               |-- Send recommendation + card
                                                               |-- Process decision
