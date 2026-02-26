@@ -1,0 +1,15 @@
+fastapi>=0.115
+uvicorn[standard]>=0.34
+motor>=3.6
+pydantic-settings>=2.6
+httpx>=0.28
+openai>=1.60
+anthropic>=0.42
+python-multipart>=0.0.18
+
+[dev]
+pytest>=8.0
+pytest-asyncio>=0.24
+pytest-cov>=6.0
+ruff>=0.8
+mongomock-motor>=0.0.34
