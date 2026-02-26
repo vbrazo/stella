@@ -1,11 +1,15 @@
-"""Agent 2: Objection handling after card sent."""
+"""Agent 3 (Closer): Objection handling after card sent.
+
+Detects objection type, generates contextual response via LLM,
+and optionally sends an alternative product card.
+"""
 
 import logging
 
 from app.engine.cards import build_card
 from app.fsm.machine import Action, Escalate, SendCard, SendText, UpdateStage
 from app.llm import get_llm
-from app.llm.prompts.qualifier import OBJECTION_HANDLER_SYSTEM
+from app.llm.prompts.closer import OBJECTION_HANDLER_SYSTEM
 from app.models.conversation import Conversation, ConversationStage
 from app.models.lead import LeadObjection
 from app.models.recommendation import Product
@@ -25,7 +29,7 @@ async def _handle_objection(conversation: Conversation, message_text: str) -> li
     actions: list[Action] = []
 
     # Detect objection type from message
-    objection_type = await _detect_objection(message_text)
+    objection_type = _detect_objection(message_text)
 
     # If we have an alternative product and haven't sent it yet, offer it
     alternative = conversation.product_alternative
@@ -63,9 +67,9 @@ async def _handle_objection(conversation: Conversation, message_text: str) -> li
             logger.error("Invalid alternative product: %s", alternative)
             actions.append(UpdateStage(ConversationStage.ESCALATED))
     else:
-        # No alternative left — escalate if persistent
+        # No alternative left -- escalate if persistent
         if objection_type == LeadObjection.LACK_OF_CONVICTION:
-            actions.append(Escalate("Indecisão persistente após objeção"))
+            actions.append(Escalate("Indecisao persistente apos objecao"))
             actions.append(UpdateStage(ConversationStage.ESCALATED))
         else:
             # Close conversation gracefully
@@ -74,15 +78,15 @@ async def _handle_objection(conversation: Conversation, message_text: str) -> li
     return actions
 
 
-async def _detect_objection(message_text: str) -> LeadObjection:
+def _detect_objection(message_text: str) -> LeadObjection:
     """Simple keyword-based objection detection."""
     text = message_text.lower()
 
-    financial_signals = ["caro", "preço", "valor", "investimento", "grana", "orçamento", "dinheiro", "custo"]
-    schedule_signals = ["agenda", "tempo", "horário", "não consigo", "ocupado"]
-    corporate_signals = ["empresa", "corporativo", "aprovação", "patrocínio", "budget"]
-    smaller_signals = ["menor", "mais simples", "começar", "testar", "experimentar"]
-    conviction_signals = ["pensar", "avaliar", "depois", "não sei", "talvez", "dúvida"]
+    financial_signals = ["caro", "preco", "valor", "investimento", "grana", "orcamento", "dinheiro", "custo"]
+    schedule_signals = ["agenda", "tempo", "horario", "nao consigo", "ocupado"]
+    corporate_signals = ["empresa", "corporativo", "aprovacao", "patrocinio", "budget"]
+    smaller_signals = ["menor", "mais simples", "comecar", "testar", "experimentar"]
+    conviction_signals = ["pensar", "avaliar", "depois", "nao sei", "talvez", "duvida"]
 
     if any(s in text for s in financial_signals):
         return LeadObjection.FINANCIAL_PERSONAL

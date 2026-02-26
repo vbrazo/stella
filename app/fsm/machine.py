@@ -53,26 +53,36 @@ class StateMachine:
         from app.fsm.handlers import (
             closing,
             confirmation,
+            escalation,
             intent,
             objection,
             opening,
             price_fallback,
+            qualifier,
             recommendation,
         )
 
         self._handlers: dict[ConversationStage, object] = {
+            # Agent 1: Concierge (opener + intent extraction)
             ConversationStage.IDLE: opening,
             ConversationStage.OPENING_SENT: opening,
             ConversationStage.AWAITING_INTENT: intent,
-            ConversationStage.PRICE_FALLBACK: price_fallback,
             ConversationStage.CONFIRMING: confirmation,
             ConversationStage.AWAITING_CONFIRMATION: confirmation,
-            ConversationStage.ASKING_Q1: intent,
-            ConversationStage.AWAITING_Q1: intent,
-            ConversationStage.ASKING_Q2: intent,
-            ConversationStage.AWAITING_Q2: intent,
-            ConversationStage.ASKING_Q3: intent,
-            ConversationStage.AWAITING_Q3: intent,
+
+            # Cross-cutting: price fallback + escalation
+            ConversationStage.PRICE_FALLBACK: price_fallback,
+            ConversationStage.ESCALATED: escalation,
+
+            # Agent 2: Qualifier (structured questions Q1-Q3)
+            ConversationStage.ASKING_Q1: qualifier,
+            ConversationStage.AWAITING_Q1: qualifier,
+            ConversationStage.ASKING_Q2: qualifier,
+            ConversationStage.AWAITING_Q2: qualifier,
+            ConversationStage.ASKING_Q3: qualifier,
+            ConversationStage.AWAITING_Q3: qualifier,
+
+            # Agent 3: Closer (recommendation + decision + objection)
             ConversationStage.RECOMMENDING: recommendation,
             ConversationStage.CARD_SENT: closing,
             ConversationStage.AWAITING_DECISION: closing,

@@ -1,4 +1,8 @@
-"""Agent 2: Product recommendation and card sending handler."""
+"""Agent 3 (Closer): Product recommendation and card sending.
+
+Runs the deterministic recommender engine, generates a personalized
+recommendation message via LLM, and sends the WhatsApp interactive card.
+"""
 
 import logging
 
@@ -7,7 +11,7 @@ from app.engine.classifier import ClusterScores
 from app.engine.recommender import recommend
 from app.fsm.machine import Action, LogCRM, SendCard, SendText, UpdateStage
 from app.llm import get_llm
-from app.llm.prompts.concierge import RECOMMENDATION_MESSAGE_SYSTEM
+from app.llm.prompts.closer import RECOMMENDATION_MESSAGE_SYSTEM
 from app.models.conversation import Conversation, ConversationStage
 from app.models.lead import Lead, LeadCluster, LeadObjection
 from app.models.recommendation import CARD_TEMPLATES
@@ -65,7 +69,7 @@ async def _recommend_and_send_card(conversation: Conversation) -> list[Action]:
             reasoning=rec.reasoning,
             conversation_history=history,
         ),
-        messages=[{"role": "user", "content": "Gere a mensagem de recomendação."}],
+        messages=[{"role": "user", "content": "Gere a mensagem de recomendacao."}],
         temperature=0.7,
     )
 
@@ -139,4 +143,4 @@ def _conversation_history(conversation: Conversation) -> str:
     for msg in conversation.messages[-10:]:
         prefix = "Lead" if msg.direction == "inbound" else "Stella"
         lines.append(f"{prefix}: {msg.content}")
-    return "\n".join(lines) if lines else "Início da conversa."
+    return "\n".join(lines) if lines else "Inicio da conversa."

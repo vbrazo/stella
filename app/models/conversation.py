@@ -67,6 +67,40 @@ class Conversation(BaseModel):
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
+    @property
+    def current_agent(self) -> str:
+        """Return the agent responsible for the current stage."""
+        concierge = {
+            ConversationStage.IDLE,
+            ConversationStage.OPENING_SENT,
+            ConversationStage.AWAITING_INTENT,
+            ConversationStage.CONFIRMING,
+            ConversationStage.AWAITING_CONFIRMATION,
+        }
+        qualifier_stages = {
+            ConversationStage.ASKING_Q1,
+            ConversationStage.AWAITING_Q1,
+            ConversationStage.ASKING_Q2,
+            ConversationStage.AWAITING_Q2,
+            ConversationStage.ASKING_Q3,
+            ConversationStage.AWAITING_Q3,
+        }
+        closer = {
+            ConversationStage.RECOMMENDING,
+            ConversationStage.CARD_SENT,
+            ConversationStage.AWAITING_DECISION,
+            ConversationStage.HANDLING_OBJECTION,
+        }
+        if self.stage in concierge:
+            return "concierge"
+        if self.stage in qualifier_stages:
+            return "qualifier"
+        if self.stage in closer:
+            return "closer"
+        if self.stage == ConversationStage.PRICE_FALLBACK:
+            return "price_fallback"
+        return "terminal"
+
     def add_message(self, message: Message) -> None:
         self.messages.append(message)
         self.updated_at = datetime.now(timezone.utc)

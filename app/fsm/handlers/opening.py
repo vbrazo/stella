@@ -1,4 +1,4 @@
-"""Agent 1: Contextual opening handler."""
+"""Agent 1 (Concierge): CRM lookup and contextual opening."""
 
 import logging
 

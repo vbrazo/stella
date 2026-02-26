@@ -1,4 +1,7 @@
-"""Agent 2: Smart confirmation handler."""
+"""Agent 1 (Concierge): Smart confirmation of classified intent.
+
+Confirms understanding with the lead before handing off to Agent 2 (Qualifier).
+"""
 
 import logging
 
