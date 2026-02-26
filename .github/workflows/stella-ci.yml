@@ -1,0 +1,41 @@
+name: Stella CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    name: Lint and Test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Run Ruff (lint)
+        run: ruff check .
+
+      - name: Run tests
+        env:
+          WHATSAPP_TOKEN: dummy
+          WHATSAPP_PHONE_NUMBER_ID: dummy
+          WHATSAPP_VERIFY_TOKEN: dummy
+          OPENAI_API_KEY: dummy
+          MONGODB_URI: mongodb://localhost:27017
+          LLM_PROVIDER: openai
+          ANTHROPIC_API_KEY: dummy
+          KOMMO_API_TOKEN: dummy
+          RELEVANCE_AI_API_URL: http://localhost
+          RELEVANCE_AI_AUTHORIZATION_TOKEN: dummy
+        run: pytest -v

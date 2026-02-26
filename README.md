@@ -1,4 +1,4 @@
-# Stella — WhatsApp Sales Agent for Strides
+# Stella: WhatsApp Sales Agent for Strides
 
 Stella is an automated WhatsApp sales agent that converts leads into purchases on the Strides website. She qualifies leads through adaptive conversational diagnosis, recommends the right product, and sends rich interactive cards — all via the official WhatsApp Cloud API.
 
@@ -112,7 +112,7 @@ uvicorn app.main:app --reload --port 8000
 4. Lead responds with open text (or audio)
 5. Stella classifies intent into 4 clusters with confidence scores
 6. If confident → confirm understanding; if ambiguous → ask clarification
-7. Stella asks up to 3 structured questions (momento, objeção, LinkedIn)
+7. Stella asks up to 3 structured questions (momentum, objection, LinkedIn)
 8. Recommender engine picks product using anti-cannibalization rules
 9. Stella sends personalized recommendation + WhatsApp interactive card
 10. Lead decides → purchase on site, quick question, or objection
@@ -120,12 +120,25 @@ uvicorn app.main:app --reload --port 8000
 
 ### Conversation States (FSM)
 
-```
-IDLE → OPENING_SENT → AWAITING_INTENT → CONFIRMING →
-AWAITING_CONFIRMATION → ASKING_Q1 → AWAITING_Q1 →
-ASKING_Q2 → AWAITING_Q2 → ASKING_Q3 → AWAITING_Q3 →
-RECOMMENDING → CARD_SENT → AWAITING_DECISION →
-HANDLING_OBJECTION → ESCALATED → COMPLETED
+```mermaid
+flowchart TD
+  IDLE["IDLE"] --> OPENING_SENT["OPENING_SENT"]
+  OPENING_SENT --> AWAITING_INTENT["AWAITING_INTENT"]
+  AWAITING_INTENT --> CONFIRMING["CONFIRMING"]
+  CONFIRMING --> AWAITING_CONFIRMATION["AWAITING_CONFIRMATION"]
+  AWAITING_CONFIRMATION --> ASKING_Q1["ASKING_Q1"]
+  ASKING_Q1 --> AWAITING_Q1["AWAITING_Q1"]
+  AWAITING_Q1 --> ASKING_Q2["ASKING_Q2"]
+  ASKING_Q2 --> AWAITING_Q2["AWAITING_Q2"]
+  AWAITING_Q2 --> ASKING_Q3["ASKING_Q3"]
+  ASKING_Q3 --> AWAITING_Q3["AWAITING_Q3"]
+  AWAITING_Q3 --> RECOMMENDING["RECOMMENDING"]
+  RECOMMENDING --> CARD_SENT["CARD_SENT"]
+  CARD_SENT --> AWAITING_DECISION["AWAITING_DECISION"]
+  AWAITING_DECISION --> HANDLING_OBJECTION["HANDLING_OBJECTION"]
+  HANDLING_OBJECTION --> ESCALATED["ESCALATED"]
+  AWAITING_DECISION --> COMPLETED["COMPLETED"]
+  ESCALATED --> COMPLETED
 ```
 
 Special paths:
