@@ -1,4 +1,8 @@
-from app.engine.classifier import ClusterScores, get_dominant_cluster
+from unittest.mock import AsyncMock
+
+import pytest
+
+from app.engine.classifier import ClusterScores, classify_intent, get_dominant_cluster
 from app.models.lead import LeadCluster
 
 
@@ -51,3 +55,22 @@ def test_not_ambiguous_with_sufficient_gap():
     cluster, confidence, is_ambiguous = get_dominant_cluster(scores)
     assert cluster == LeadCluster.STRUCTURED_EVOLUTION
     assert not is_ambiguous
+
+
+@pytest.mark.asyncio
+async def test_classify_intent_fallback_on_llm_failure():
+    """When LLM fails completely, returns uniform ambiguous scores."""
+    mock_llm = AsyncMock()
+    mock_llm.complete_json_safe = AsyncMock(side_effect=RuntimeError("LLM down"))
+
+    analysis = await classify_intent(mock_llm, "quero saber mais")
+
+    assert analysis.cluster_scores.structured_evolution == 0.25
+    assert analysis.cluster_scores.specific_challenge == 0.25
+    assert analysis.cluster_scores.flexibility_needed == 0.25
+    assert analysis.cluster_scores.strategic_evaluation == 0.25
+    assert analysis.price_request is False
+
+    # Uniform 0.25 scores should be ambiguous
+    _, _, is_ambiguous = get_dominant_cluster(analysis.cluster_scores)
+    assert is_ambiguous
