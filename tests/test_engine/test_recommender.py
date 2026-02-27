@@ -129,3 +129,60 @@ def test_corporate_dependency():
     rec = recommend(lead, scores)
     assert rec.primary != Product.TRILHAS
     assert "corporativa" in rec.reasoning.lower() or "corporativo" in rec.reasoning.lower()
+
+
+# --- Deterministic anti-cannibalization assertions ---
+
+
+def test_membership_never_has_lower_tier_alternative():
+    """When Membership is primary, alternative must be None."""
+    lead = _make_lead(
+        seniority="head",
+        cluster=LeadCluster.STRUCTURED_EVOLUTION,
+        has_financial_availability=True,
+        has_live_availability=True,
+    )
+    scores = _default_scores(structured_evolution=0.9)
+    rec = recommend(lead, scores)
+    assert rec.primary in (Product.MEMBERSHIP_HEAD_TECH, Product.MEMBERSHIP_HEAD_DATA)
+    assert rec.alternative is None
+
+
+def test_schedule_objection_always_trilhas_regardless_of_cluster():
+    """Schedule objection ALWAYS produces Trilhas as primary, for every cluster."""
+    for cluster in LeadCluster:
+        lead = _make_lead(
+            cluster=cluster,
+            objection=LeadObjection.SCHEDULE_LIMITATION,
+            has_live_availability=False,
+        )
+        scores = _default_scores()
+        rec = recommend(lead, scores)
+        assert rec.primary == Product.TRILHAS, f"Failed for cluster {cluster}"
+
+
+def test_trilhas_never_primary_without_flexibility_or_objection():
+    """Trilhas should NOT be primary when lead has financial + live + no constraints."""
+    lead = _make_lead(
+        seniority="manager",
+        cluster=LeadCluster.SPECIFIC_CHALLENGE,
+        objection=LeadObjection.NONE,
+        has_financial_availability=True,
+        has_live_availability=True,
+    )
+    scores = _default_scores(specific_challenge=0.8)
+    rec = recommend(lead, scores)
+    assert rec.primary != Product.TRILHAS
+    assert rec.primary != Product.ACERVO_ON_DEMAND
+
+
+def test_all_cluster_objection_combinations_produce_valid_product():
+    """Every cluster x objection combination must return a valid Product."""
+    for cluster in LeadCluster:
+        for obj in LeadObjection:
+            lead = _make_lead(cluster=cluster, objection=obj)
+            scores = _default_scores()
+            rec = recommend(lead, scores)
+            assert isinstance(rec.primary, Product), (
+                f"Invalid primary for cluster={cluster}, objection={obj}"
+            )
