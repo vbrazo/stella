@@ -16,6 +16,10 @@ async def connect() -> None:
     await _db.leads.create_index("phone")
     await _db.leads.create_index("kommo_id", sparse=True)
 
+    # Metrics
+    await _db.metrics_events.create_index([("type", 1), ("timestamp", -1)])
+    await _db.metrics_events.create_index("timestamp")
+
 
 async def disconnect() -> None:
     global _client, _db

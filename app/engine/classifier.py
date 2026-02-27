@@ -36,12 +36,28 @@ async def classify_intent(
         lead_context=lead_context,
     )
 
-    analysis = await llm.complete_json(
-        system=system,
-        messages=[{"role": "user", "content": lead_message}],
-        schema=IntentAnalysis,
-        temperature=0.3,
-    )
+    try:
+        analysis = await llm.complete_json_safe(
+            system=system,
+            messages=[{"role": "user", "content": lead_message}],
+            schema=IntentAnalysis,
+            temperature=0.3,
+        )
+    except Exception:
+        logger.exception("Intent classification failed after retries, using fallback")
+        # Safe fallback: uniform scores trigger ambiguity → routes to Qualifier
+        analysis = IntentAnalysis(
+            cluster_scores=ClusterScores(
+                structured_evolution=0.25,
+                specific_challenge=0.25,
+                flexibility_needed=0.25,
+                strategic_evaluation=0.25,
+            ),
+            detected_objection="none",
+            ai_interest=False,
+            urgency="medium",
+            price_request=False,
+        )
 
     logger.info(
         "Intent classification: scores=%s, objection=%s, ai=%s, price=%s",

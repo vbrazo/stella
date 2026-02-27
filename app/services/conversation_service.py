@@ -20,6 +20,8 @@ from app.integrations.whatsapp.models import IncomingMessage
 from app.integrations.whisper.client import transcribe_audio
 from app.models.conversation import Conversation, ConversationStage, Message
 from app.services.message_formatter import split_message, whatsapp_delay
+from app.services.metrics import get_metrics, timed_operation
+from app.services.output_guard import guard_output
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +39,7 @@ async def handle_incoming_message(incoming: IncomingMessage) -> None:
     """Process a single incoming WhatsApp message end-to-end."""
     db = get_db()
     phone = incoming.phone
+    metrics = get_metrics()
 
     # Mark as read
     try:
@@ -58,8 +61,14 @@ async def handle_incoming_message(incoming: IncomingMessage) -> None:
     if incoming.type == "audio" and incoming.audio_id:
         try:
             message_text = await transcribe_audio(incoming.audio_id)
-        except Exception:
+        except Exception as e:
             logger.exception("Audio transcription failed for %s", incoming.audio_id)
+            await metrics.record_integration_error(
+                integration="whisper",
+                operation="transcribe_audio",
+                error=str(e),
+                phone=phone,
+            )
             message_text = ""
             await wa_client.send_text(phone, "Não consegui ouvir o áudio. Pode mandar por texto?")
             return
@@ -80,18 +89,47 @@ async def handle_incoming_message(incoming: IncomingMessage) -> None:
     if incoming.name and not conversation.lead_data.get("name"):
         conversation.lead_data["name"] = incoming.name
 
-    # Run FSM
+    # Run FSM with timing
     machine = _get_machine()
+    old_stage = conversation.stage
 
-    # For IDLE state, process without message (trigger opening)
-    if conversation.stage == ConversationStage.IDLE:
+    async with timed_operation("fsm_process") as timing:
         actions = await machine.process(conversation, message_text)
-    else:
-        actions = await machine.process(conversation, message_text)
+
+    # Record handler timing
+    await metrics.record_handler_timing(
+        handler_name=old_stage.value,
+        duration_ms=timing["elapsed_ms"],
+        phone=phone,
+        stage=old_stage.value,
+    )
+
+    # Record stage transitions
+    for action in actions:
+        if isinstance(action, UpdateStage):
+            await metrics.record_stage_transition(
+                phone=phone,
+                from_stage=old_stage.value,
+                to_stage=action.stage.value,
+                handler_name=old_stage.value,
+                duration_ms=timing["elapsed_ms"],
+            )
 
     # Execute actions
     for action in actions:
         await _execute_action(phone, conversation, action)
+
+    # Record conversation outcome on terminal states
+    if conversation.stage in (ConversationStage.COMPLETED, ConversationStage.ESCALATED):
+        duration = (conversation.updated_at - conversation.created_at).total_seconds()
+        outcome = "completed" if conversation.stage == ConversationStage.COMPLETED else "escalated"
+        await metrics.record_conversation_outcome(
+            phone=phone,
+            outcome=outcome,
+            final_stage=conversation.stage.value,
+            product_recommended=conversation.product_recommended,
+            duration_seconds=duration,
+        )
 
     # Persist conversation
     await _save_conversation(db, conversation)
@@ -99,15 +137,24 @@ async def handle_incoming_message(incoming: IncomingMessage) -> None:
 
 async def _execute_action(phone: str, conversation: Conversation, action: Action) -> None:
     """Execute a single FSM action."""
+    metrics = get_metrics()
+
     if isinstance(action, SendText):
-        # Split long messages for WhatsApp
-        chunks = split_message(action.text)
+        # Apply guardrails then split for WhatsApp
+        guarded_text = guard_output(action.text)
+        chunks = split_message(guarded_text)
         for chunk in chunks:
             await whatsapp_delay()
             try:
                 await wa_client.send_text(phone, chunk)
-            except Exception:
+            except Exception as e:
                 logger.exception("Failed to send text to %s", phone)
+                await metrics.record_integration_error(
+                    integration="whatsapp",
+                    operation="send_text",
+                    error=str(e),
+                    phone=phone,
+                )
                 return
 
             # Record outbound message
@@ -119,10 +166,17 @@ async def _execute_action(phone: str, conversation: Conversation, action: Action
 
     elif isinstance(action, SendButtons):
         await whatsapp_delay()
+        guarded_body = guard_output(action.body, context="qualifier")
         try:
-            await wa_client.send_buttons(phone, action.body, action.buttons)
-        except Exception:
+            await wa_client.send_buttons(phone, guarded_body, action.buttons)
+        except Exception as e:
             logger.exception("Failed to send buttons to %s", phone)
+            await metrics.record_integration_error(
+                integration="whatsapp",
+                operation="send_buttons",
+                error=str(e),
+                phone=phone,
+            )
             return
 
         conversation.add_message(Message(
@@ -135,8 +189,14 @@ async def _execute_action(phone: str, conversation: Conversation, action: Action
         await whatsapp_delay()
         try:
             await wa_client.send_cta_card(phone, action.card)
-        except Exception:
+        except Exception as e:
             logger.exception("Failed to send card to %s", phone)
+            await metrics.record_integration_error(
+                integration="whatsapp",
+                operation="send_cta_card",
+                error=str(e),
+                phone=phone,
+            )
             return
 
         conversation.add_message(Message(
@@ -158,8 +218,14 @@ async def _execute_action(phone: str, conversation: Conversation, action: Action
                 lead_id = conversation.lead_data["kommo_lead_id"]
                 await kommo.add_note("leads", lead_id, f"Stella escalation: {action.reason}")
                 await kommo.update_lead_tags(lead_id, ["stella_escalated"])
-            except Exception:
+            except Exception as e:
                 logger.exception("Failed to log escalation to Kommo")
+                await metrics.record_integration_error(
+                    integration="kommo",
+                    operation="escalation_log",
+                    error=str(e),
+                    phone=phone,
+                )
 
     elif isinstance(action, LogCRM):
         logger.info("CRM log for %s: %s", phone, action.data)
@@ -169,8 +235,14 @@ async def _execute_action(phone: str, conversation: Conversation, action: Action
                 lead_id = conversation.lead_data["kommo_lead_id"]
                 note = "\n".join(f"{k}: {v}" for k, v in action.data.items())
                 await kommo.add_note("leads", lead_id, note)
-            except Exception:
+            except Exception as e:
                 logger.exception("Failed to log to Kommo")
+                await metrics.record_integration_error(
+                    integration="kommo",
+                    operation="add_note",
+                    error=str(e),
+                    phone=phone,
+                )
 
     elif isinstance(action, UpdateStage):
         # Stage already updated by machine, just log
