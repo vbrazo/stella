@@ -86,6 +86,6 @@ async def test_temperature_decreases_on_retries():
 
     assert result == expected
     temperatures = [call.args[3] for call in provider.complete_json_mock.call_args_list]
-    assert temperatures[0] == 0.3
-    assert temperatures[1] == 0.2
-    assert temperatures[2] == 0.1
+    assert temperatures[0] == pytest.approx(0.3)
+    assert temperatures[1] == pytest.approx(0.2)
+    assert temperatures[2] == pytest.approx(0.1)

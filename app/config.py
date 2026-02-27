@@ -2,11 +2,19 @@ from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
+    # WhatsApp provider selection
+    whatsapp_provider: str = "cloud_api"  # "cloud_api" | "evolution"
+
     # WhatsApp Cloud API
     whatsapp_token: str = ""
     whatsapp_phone_number_id: str = ""
     whatsapp_verify_token: str = ""
     whatsapp_api_version: str = "v21.0"
+
+    # Evolution API v2 (only when whatsapp_provider == "evolution")
+    evolution_api_url: str = ""
+    evolution_api_key: str = ""
+    evolution_instance_name: str = ""
 
     # LLM
     llm_provider: str = "openai"  # "openai" | "anthropic"

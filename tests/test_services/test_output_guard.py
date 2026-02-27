@@ -30,7 +30,8 @@ class TestEnforceLength:
         assert result.endswith("...")
 
     def test_truncates_at_question_mark(self):
-        text = "Voce esta pronto? " + "a" * 130
+        # Place "?" past 50% mark (>70 chars) so sentence boundary is preferred
+        text = "a" * 80 + "? " + "b" * 80
         result = enforce_length(text)
         assert result.endswith("?")
 

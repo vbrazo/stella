@@ -26,7 +26,13 @@ async def verify_webhook(
 @router.post("/whatsapp")
 async def receive_message(request: Request):
     body = await request.json()
-    messages = parse_webhook_payload(body)
+
+    if settings.whatsapp_provider == "evolution":
+        from app.integrations.whatsapp.evolution_parser import parse_evolution_webhook
+
+        messages = parse_evolution_webhook(body)
+    else:
+        messages = parse_webhook_payload(body)
 
     for msg in messages:
         try:
