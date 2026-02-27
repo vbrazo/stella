@@ -1,29 +1,29 @@
 # Stella: WhatsApp Sales Agent for Strides
 
-Stella is an automated WhatsApp sales agent that converts leads into purchases on the Strides website. She qualifies leads through adaptive conversational diagnosis, recommends the right product, and sends rich interactive cards — all via the official WhatsApp Cloud API.
+Stella is an automated WhatsApp sales agent that converts leads into purchases on the Strides website. She qualifies leads through adaptive conversational diagnosis, recommends the right product, and sends rich interactive cards — all via WhatsApp (Cloud API or Evolution API).
 
 ## Architecture
 
 Stella uses a **three-agent architecture** powered by a custom finite state machine (FSM):
 
 ```
-WhatsApp Cloud API -> FastAPI Webhook -> Conversation Service -> FSM
-                                                                  |
-                      +-------------------------------------------+----------------------------+
-                      v                                           v                            v
-                Agent 1: Concierge                     Agent 2: Qualifier               Agent 3: Closer
-                +------------------+                   +------------------+             +------------------+
-                | CRM Lookup       |                   | Structured Q1-Q3 |             | Recommendation   |
-                | Origin Detection |      handoff      | Cluster Profiling|   handoff   | Card Sending     |
-                | Opening Message  | ----------------> | Objection Mapping| ----------> | Decision Process |
-                | Intent Classify  |                   | LinkedIn Request |             | Objection Handle |
-                | Confirmation     |                   +------------------+             +------------------+
-                +------------------+                                                          |
-                                                                                    +---------+---------+
-                                                                                    v                   v
-                                                                              Recommender          WhatsApp Card
-                                                                              Engine               Builder
-                                                                              (anti-cannibalization)
+WhatsApp (Cloud API / Evolution API) -> FastAPI Webhook -> Conversation Service -> FSM
+                                                                                    |
+                      +-------------------------------------------------------------+----------------------------+
+                      v                                                             v                            v
+                Agent 1: Concierge                                       Agent 2: Qualifier               Agent 3: Closer
+                +------------------+                                     +------------------+             +------------------+
+                | CRM Lookup       |                                     | Structured Q1-Q3 |             | Recommendation   |
+                | Origin Detection |      handoff                        | Cluster Profiling|   handoff   | Card Sending     |
+                | Opening Message  | ----------------------------------> | Objection Mapping| ----------> | Decision Process |
+                | Intent Classify  |                                     | LinkedIn Request |             | Objection Handle |
+                | Confirmation     |                                     +------------------+             +------------------+
+                +------------------+                                                                            |
+                                                                                                       +---------+---------+
+                                                                                                       v                   v
+                                                                                                 Recommender          WhatsApp Card
+                                                                                                 Engine               Builder
+                                                                                                 (anti-cannibalization)
 ```
 
 **Agent 1 (Concierge)** identifies the lead in Kommo CRM, detects origin (LinkedIn/Site), sends a personalized opening, extracts intent from the lead's open response, and confirms understanding before handoff.
@@ -80,7 +80,7 @@ Concierge                    Qualifier                     Closer
 | Framework | Python 3.12 + FastAPI |
 | LLM | OpenAI GPT-4o + Anthropic Claude (configurable) |
 | CRM | Kommo (read + write) |
-| WhatsApp | Meta Cloud API (direct) |
+| WhatsApp | Meta Cloud API or Evolution API v2 (configurable) |
 | Database | MongoDB (via motor async) |
 | LinkedIn Scraper | Relevance AI (existing internal API) |
 | Audio | OpenAI Whisper API |
@@ -92,7 +92,7 @@ Concierge                    Qualifier                     Closer
 
 - Python 3.12+
 - MongoDB running locally (or remote URI)
-- WhatsApp Business Account with Cloud API access
+- WhatsApp Business Account (Cloud API access **or** Evolution API instance)
 - OpenAI API key (and/or Anthropic key)
 
 ### Installation
@@ -113,11 +113,21 @@ Fill in the required values in `.env`:
 
 ```env
 # Required
+OPENAI_API_KEY=your_openai_key
+MONGODB_URI=mongodb://localhost:27017
+
+# WhatsApp provider: "cloud_api" (default) or "evolution"
+WHATSAPP_PROVIDER=cloud_api
+
+# Cloud API (when WHATSAPP_PROVIDER=cloud_api)
 WHATSAPP_TOKEN=your_whatsapp_access_token
 WHATSAPP_PHONE_NUMBER_ID=your_phone_number_id
 WHATSAPP_VERIFY_TOKEN=your_webhook_verify_token
-OPENAI_API_KEY=your_openai_key
-MONGODB_URI=mongodb://localhost:27017
+
+# Evolution API v2 (when WHATSAPP_PROVIDER=evolution)
+EVOLUTION_API_URL=http://localhost:8080
+EVOLUTION_API_KEY=your_evolution_api_key
+EVOLUTION_INSTANCE_NAME=your_instance
 
 # Optional
 LLM_PROVIDER=openai                    # or "anthropic"
@@ -135,8 +145,9 @@ uvicorn app.main:app --reload --port 8000
 
 ### Webhook Setup
 
-1. Configure your Meta WhatsApp webhook URL to point to `https://your-domain/webhooks/whatsapp`
-2. Use the `WHATSAPP_VERIFY_TOKEN` value when verifying the webhook in Meta's dashboard
+**Cloud API**: Configure your Meta WhatsApp webhook URL to point to `https://your-domain/webhooks/whatsapp` and use the `WHATSAPP_VERIFY_TOKEN` value when verifying in Meta's dashboard.
+
+**Evolution API**: Point your Evolution instance webhook to `https://your-domain/webhooks/whatsapp`. Authentication is handled via `apikey` header — no webhook verification step needed.
 
 ## Conversation Flow
 
@@ -208,11 +219,31 @@ The recommender engine enforces these priority rules to protect premium position
 4. **AI boost**: when AI interest detected + senior profile, prioritize AI products
 5. **Never auto-downgrade**: volume/lower-tier products only when financial objection is explicitly stated
 
+## Production Guardrails
+
+### LLM Output Safety
+
+- **JSON retry**: `complete_json_safe` retries structured LLM calls up to 2 times on parse/validation failure, lowering temperature on each attempt
+- **Classification fallback**: If intent classification fails entirely, returns uniform ambiguous scores — routes lead to Qualifier for clarification (safest path)
+- **Output guard**: All outbound messages pass through `guard_output()` which enforces:
+  - 140-character limit (truncates at sentence boundary)
+  - 2-sentence maximum (single idea per message)
+  - Context-aware fallback messages for empty LLM outputs
+
+### Production Metrics
+
+Metrics are written to a `metrics_events` MongoDB collection and queryable via admin endpoints:
+
+- **Stage transitions**: per-stage drop-off with handler duration
+- **Conversation outcomes**: completed, escalated, abandoned — with avg duration
+- **Integration errors**: error rates grouped by integration (WhatsApp, Kommo, Whisper) and operation
+- **Handler timing**: LLM + integration call latency per FSM stage
+
 ## Project Structure
 
 ```
 app/
-+-- api/              # FastAPI routes (webhooks, health, admin)
++-- api/              # FastAPI routes (webhooks, health, admin, metrics)
 +-- models/           # Pydantic models (Conversation, Lead, Product)
 +-- fsm/              # State machine + 9 stage handlers
 |   +-- handlers/
@@ -228,6 +259,7 @@ app/
 |   +-- machine.py     # FSM engine + action types
 |   +-- states.py      # Transition matrix
 +-- llm/              # LLM abstraction (OpenAI + Anthropic)
+|   +-- base.py        # LLMProvider ABC + complete_json_safe retry
 |   +-- prompts/
 |   |   +-- concierge.py  # Agent 1 prompts
 |   |   +-- qualifier.py  # Agent 2 prompts
@@ -235,7 +267,19 @@ app/
 |   |   +-- classifier.py # Cluster classification prompt
 +-- engine/           # Classifier, recommender, card builder
 +-- integrations/     # WhatsApp, Kommo, LinkedIn, Whisper clients
+|   +-- whatsapp/
+|   |   +-- base.py          # WhatsAppProvider ABC
+|   |   +-- client.py        # Factory (delegates to configured provider)
+|   |   +-- cloud_api.py     # Meta Cloud API provider
+|   |   +-- evolution_api.py # Evolution API v2 provider
+|   |   +-- parser.py        # Cloud API webhook parser
+|   |   +-- evolution_parser.py  # Evolution webhook parser
+|   |   +-- models.py        # IncomingMessage, InteractiveCard, etc.
 +-- services/         # Orchestrator, lead enrichment, message formatting
+|   +-- conversation_service.py  # Main orchestrator
+|   +-- metrics.py               # MetricsCollector (MongoDB-based)
+|   +-- output_guard.py          # LLM output guardrails
+|   +-- message_formatter.py     # 140-char message splitting
 ```
 
 ## Testing
@@ -244,28 +288,36 @@ app/
 pytest tests/ -v
 ```
 
-Tests cover:
+95 tests covering:
 - FSM state transitions and terminal states
-- Recommender anti-cannibalization rules (8 scenarios)
-- Cluster classifier confidence/ambiguity logic
-- WhatsApp webhook payload parsing (text, audio, buttons)
+- Recommender anti-cannibalization rules (12 scenarios including full cluster x objection matrix)
+- Cluster classifier confidence/ambiguity logic + fallback on LLM failure
+- WhatsApp webhook payload parsing (Cloud API + Evolution API)
+- WhatsApp provider factory and interface compliance
 - Card builder output for all products
 - Message formatter (140-char splitting)
+- Output guard (length enforcement, sentence limiting, fallback messages)
+- LLM retry logic (validation error recovery, temperature decay)
+- Handler unit tests (intent routing, objection handling)
+- End-to-end conversation scenarios (ambiguous intent, price-only, objection after card, voice message, re-entry after silence)
 
 ## API Endpoints
 
 | Method | Path | Description |
 |--------|------|-------------|
-| `GET` | `/webhooks/whatsapp` | Meta webhook verification |
-| `POST` | `/webhooks/whatsapp` | Receive WhatsApp messages |
+| `GET` | `/webhooks/whatsapp` | Meta webhook verification (Cloud API only) |
+| `POST` | `/webhooks/whatsapp` | Receive WhatsApp messages (Cloud API or Evolution) |
 | `GET` | `/health` | Health check (MongoDB ping) |
 | `GET` | `/admin/conversations` | List recent conversations |
 | `GET` | `/admin/conversations/{phone}` | View full conversation |
+| `GET` | `/admin/metrics/funnel?hours=24` | Stage drop-off funnel |
+| `GET` | `/admin/metrics/outcomes?hours=24` | Conversion outcomes |
+| `GET` | `/admin/metrics/errors?hours=24` | Integration error rates |
 
 ## WhatsApp Message Style
 
 Stella follows WhatsApp Brazil conversational norms:
-- Max 140 characters per message
+- Max 140 characters per message (enforced post-LLM via output guard)
 - One idea per message
 - Variable typing delay (600ms-2200ms)
 - Contextual micro-validations before advancing
