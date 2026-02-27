@@ -4,18 +4,16 @@ Each test simulates multi-turn conversations through the FSM,
 mocking LLM responses but exercising real handler logic and state transitions.
 """
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import patch
 
 import pytest
 
 from app.engine.classifier import ClusterScores, IntentAnalysis
 from app.fsm.machine import (
-    Escalate,
     SendButtons,
     SendCard,
     SendText,
     StateMachine,
-    UpdateStage,
 )
 from app.models.conversation import Conversation, ConversationStage
 
@@ -73,7 +71,7 @@ class TestObjectionAfterCardScenario:
         conversation = Conversation(phone="5511999999999")
         conversation.stage = ConversationStage.AWAITING_DECISION
 
-        actions = await machine.process(conversation, "achei caro")
+        await machine.process(conversation, "achei caro")
         assert conversation.stage == ConversationStage.HANDLING_OBJECTION
 
     @pytest.mark.asyncio
@@ -107,7 +105,7 @@ class TestReEntryAfterSilence:
         fake_llm.text_responses = ["Faz sentido!", "Qual seu LinkedIn?"]
 
         with patch("app.fsm.handlers.qualifier.get_llm", return_value=fake_llm):
-            actions = await machine.process(conversation, "q2_budget")
+            await machine.process(conversation, "q2_budget")
 
         # Should have moved forward (Q2 processed, now at ASKING_Q3 or later)
         assert conversation.stage in (
@@ -124,7 +122,7 @@ class TestReEntryAfterSilence:
         fake_llm.text_responses = ["Voce pode garantir sua vaga pelo card."]
 
         with patch("app.fsm.handlers.closing.get_llm", return_value=fake_llm):
-            actions = await machine.process(conversation, "")
+            await machine.process(conversation, "")
 
         assert conversation.stage == ConversationStage.AWAITING_DECISION
 

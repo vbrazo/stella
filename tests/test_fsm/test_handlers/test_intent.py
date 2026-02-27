@@ -1,13 +1,13 @@
 """Tests for intent handler routing."""
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import patch
 
 import pytest
 
 from app.engine.classifier import ClusterScores, IntentAnalysis
 from app.fsm.handlers import intent
 from app.fsm.machine import SendButtons, UpdateStage
-from app.models.conversation import Conversation, ConversationStage
+from app.models.conversation import ConversationStage
 
 
 @pytest.mark.asyncio

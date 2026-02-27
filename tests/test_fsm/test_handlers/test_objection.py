@@ -6,7 +6,7 @@ import pytest
 
 from app.fsm.handlers import objection
 from app.fsm.machine import Escalate, SendCard, SendText, UpdateStage
-from app.models.conversation import Conversation, ConversationStage
+from app.models.conversation import ConversationStage
 
 
 @pytest.mark.asyncio
