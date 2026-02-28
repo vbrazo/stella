@@ -7,23 +7,31 @@ Stella is an automated WhatsApp sales agent that converts leads into purchases o
 Stella uses a **three-agent architecture** powered by a custom finite state machine (FSM):
 
 ```
-WhatsApp (Cloud API / Evolution API) -> FastAPI Webhook -> Conversation Service -> FSM
-                                                                                    |
-                      +-------------------------------------------------------------+----------------------------+
-                      v                                                             v                            v
-                Agent 1: Concierge                                       Agent 2: Qualifier               Agent 3: Closer
-                +------------------+                                     +------------------+             +------------------+
-                | CRM Lookup       |                                     | Structured Q1-Q3 |             | Recommendation   |
-                | Origin Detection |      handoff                        | Cluster Profiling|   handoff   | Card Sending     |
-                | Opening Message  | ----------------------------------> | Objection Mapping| ----------> | Decision Process |
-                | Intent Classify  |                                     | LinkedIn Request |             | Objection Handle |
-                | Confirmation     |                                     +------------------+             +------------------+
-                +------------------+                                                                            |
-                                                                                                       +---------+---------+
-                                                                                                       v                   v
-                                                                                                 Recommender          WhatsApp Card
-                                                                                                 Engine               Builder
-                                                                                                 (anti-cannibalization)
+                        WhatsApp (Cloud API / Evolution API)
+                            |
+                            v
+                        FastAPI Webhook
+                            |
+                            v
+                        Conversation Service
+                            |
+                            v
+                           FSM
+                            |
+    +-------+-------------------------+----------------------+----------+
+            v                         v                      v
+     Agent 1: Concierge       Agent 2: Qualifier       Agent 3: Closer
+    +------------------+    +-------------------+    +------------------+
+    | CRM Lookup       |    | Structured Q1-Q3  |    | Recommendation   |
+    | Origin Detection |    | Cluster Profiling |    | Card Sending     |
+    | Opening Message  | -> | Objection Mapping | -> | Decision Process |
+    | Intent Classify  |    | LinkedIn Request  |    | Objection Handle |
+    | Confirmation     |    +-------------------+    +------------------+
+    +------------------+                                    |
+                                              +-------------+-----------+
+                                              v                         v
+                                      Recommender Engine      WhatsApp Card Builder
+                                    (anti-cannibalization)
 ```
 
 **Agent 1 (Concierge)** identifies the lead in Kommo CRM, detects origin (LinkedIn/Site), sends a personalized opening, extracts intent from the lead's open response, and confirms understanding before handoff.
@@ -52,8 +60,8 @@ Concierge                    Qualifier                     Closer
     |-- Confirm understanding    |                            |
     |                            |                            |
     +-- ASKING_Q1 -------------->|                            |
-                                 |-- Ask Q1 (moment)          |
-                                 |-- Ask Q2 (objection)       |
+                                 |-- Ask Q1 (Moment)          |
+                                 |-- Ask Q2 (Objection)       |
                                  |-- Ask Q3 (LinkedIn)        |
                                  |                            |
                                  +-- RECOMMENDING ----------->|
@@ -66,25 +74,25 @@ Concierge                    Qualifier                     Closer
 
 ## Products
 
-| Product | Price Range | Format | Priority When |
-|---------|------------|--------|---------------|
-| Membership | R$12k-16k | 12 months, live | Senior + financial + live availability |
-| Programa Executivo | R$3.5k-8.5k | 4 weeks, live | Specific challenge + live availability |
-| Trilhas | Lower | On demand | Budget constraint or flexibility needed |
-| Acervo On Demand | Lowest | On demand | Schedule limitation |
+| Product            | Price Range | Format          | Priority When                           |
+|--------------------|-------------|-----------------|-----------------------------------------|
+| Membership         | R$12k-16k   | 12 months, live | Senior + financial + live availability  |
+| Programa Executivo | R$3.5k-8.5k | 4 weeks, live   | Specific challenge + live availability  |
+| Trilhas            | Lower       | On demand       | Budget constraint or flexibility needed |
+| Acervo On Demand   | Lowest      | On demand       | Schedule limitation                     |
 
 ## Tech Stack
 
-| Component | Technology |
-|-----------|-----------|
-| Framework | Python 3.12 + FastAPI |
-| LLM | OpenAI GPT-4o + Anthropic Claude (configurable) |
-| CRM | Kommo (read + write) |
-| WhatsApp | Meta Cloud API or Evolution API v2 (configurable) |
-| Database | MongoDB (via motor async) |
-| LinkedIn Scraper | Relevance AI (existing internal API) |
-| Audio | OpenAI Whisper API |
-| Agent Orchestration | Custom 3-agent FSM (no LangChain) |
+| Component           | Technology                                        |
+|---------------------|---------------------------------------------------|
+| Framework           | Python 3.12 + FastAPI                             |
+| LLM                 | OpenAI GPT-4o + Anthropic Claude (configurable)   |
+| CRM                 | Kommo (read + write)                              |
+| WhatsApp            | Meta Cloud API or Evolution API v2 (configurable) |
+| Database            | MongoDB (via motor async)                         |
+| LinkedIn Scraper    | Relevance AI (existing internal API)              |
+| Audio               | OpenAI Whisper API                                |
+| Agent Orchestration | Custom 3-agent FSM (no LangChain)                 |
 
 ## Setup
 
@@ -243,39 +251,39 @@ Metrics are written to a `metrics_events` MongoDB collection and queryable via a
 
 ```
 app/
-+-- api/              # FastAPI routes (webhooks, health, admin, metrics)
-+-- models/           # Pydantic models (Conversation, Lead, Product)
-+-- fsm/              # State machine + 9 stage handlers
++-- api/                         # FastAPI routes (webhooks, health, admin, metrics)
++-- models/                      # Pydantic models (Conversation, Lead, Product)
++-- fsm/                         # State machine + 9 stage handlers
 |   +-- handlers/
-|   |   +-- opening.py         # Agent 1: CRM lookup + opening
-|   |   +-- intent.py          # Agent 1: Intent classification
-|   |   +-- confirmation.py    # Agent 1: Smart confirmation
-|   |   +-- qualifier.py       # Agent 2: Structured Q1-Q3
-|   |   +-- recommendation.py  # Agent 3: Product recommendation
-|   |   +-- closing.py         # Agent 3: Card delivery + decision
-|   |   +-- objection.py       # Agent 3: Objection handling
-|   |   +-- price_fallback.py  # Cross-cutting: Price responses
-|   |   +-- escalation.py      # Cross-cutting: Human handoff
-|   +-- machine.py     # FSM engine + action types
-|   +-- states.py      # Transition matrix
-+-- llm/              # LLM abstraction (OpenAI + Anthropic)
-|   +-- base.py        # LLMProvider ABC + complete_json_safe retry
+|   |   +-- opening.py           # Agent 1: CRM lookup + opening
+|   |   +-- intent.py            # Agent 1: Intent classification
+|   |   +-- confirmation.py      # Agent 1: Smart confirmation
+|   |   +-- qualifier.py         # Agent 2: Structured Q1-Q3
+|   |   +-- recommendation.py    # Agent 3: Product recommendation
+|   |   +-- closing.py           # Agent 3: Card delivery + decision
+|   |   +-- objection.py         # Agent 3: Objection handling
+|   |   +-- price_fallback.py    # Cross-cutting: Price responses
+|   |   +-- escalation.py        # Cross-cutting: Human handoff
+|   +-- machine.py               # FSM engine + action types
+|   +-- states.py                # Transition matrix
++-- llm/                         # LLM abstraction (OpenAI + Anthropic)
+|   +-- base.py                  # LLMProvider ABC + complete_json_safe retry
 |   +-- prompts/
-|   |   +-- concierge.py  # Agent 1 prompts
-|   |   +-- qualifier.py  # Agent 2 prompts
-|   |   +-- closer.py     # Agent 3 prompts
-|   |   +-- classifier.py # Cluster classification prompt
-+-- engine/           # Classifier, recommender, card builder
-+-- integrations/     # WhatsApp, Kommo, LinkedIn, Whisper clients
+|   |   +-- concierge.py         # Agent 1 prompts
+|   |   +-- qualifier.py         # Agent 2 prompts
+|   |   +-- closer.py            # Agent 3 prompts
+|   |   +-- classifier.py        # Cluster classification prompt
++-- engine/                      # Classifier, recommender, card builder
++-- integrations/                # WhatsApp, Kommo, LinkedIn, Whisper clients
 |   +-- whatsapp/
-|   |   +-- base.py          # WhatsAppProvider ABC
-|   |   +-- client.py        # Factory (delegates to configured provider)
-|   |   +-- cloud_api.py     # Meta Cloud API provider
-|   |   +-- evolution_api.py # Evolution API v2 provider
-|   |   +-- parser.py        # Cloud API webhook parser
+|   |   +-- base.py              # WhatsAppProvider ABC
+|   |   +-- client.py            # Factory (delegates to configured provider)
+|   |   +-- cloud_api.py         # Meta Cloud API provider
+|   |   +-- evolution_api.py     # Evolution API v2 provider
+|   |   +-- parser.py            # Cloud API webhook parser
 |   |   +-- evolution_parser.py  # Evolution webhook parser
-|   |   +-- models.py        # IncomingMessage, InteractiveCard, etc.
-+-- services/         # Orchestrator, lead enrichment, message formatting
+|   |   +-- models.py            # IncomingMessage, InteractiveCard, etc.
++-- services/                    # Orchestrator, lead enrichment, message formatting
 |   +-- conversation_service.py  # Main orchestrator
 |   +-- metrics.py               # MetricsCollector (MongoDB-based)
 |   +-- output_guard.py          # LLM output guardrails
@@ -303,16 +311,16 @@ pytest tests/ -v
 
 ## API Endpoints
 
-| Method | Path | Description |
-|--------|------|-------------|
-| `GET` | `/webhooks/whatsapp` | Meta webhook verification (Cloud API only) |
-| `POST` | `/webhooks/whatsapp` | Receive WhatsApp messages (Cloud API or Evolution) |
-| `GET` | `/health` | Health check (MongoDB ping) |
-| `GET` | `/admin/conversations` | List recent conversations |
-| `GET` | `/admin/conversations/{phone}` | View full conversation |
-| `GET` | `/admin/metrics/funnel?hours=24` | Stage drop-off funnel |
-| `GET` | `/admin/metrics/outcomes?hours=24` | Conversion outcomes |
-| `GET` | `/admin/metrics/errors?hours=24` | Integration error rates |
+| Method | Path                               | Description                                        |
+|--------|------------------------------------|----------------------------------------------------|
+| `GET`  | `/webhooks/whatsapp`               | Meta webhook verification (Cloud API only)         |
+| `POST` | `/webhooks/whatsapp`               | Receive WhatsApp messages (Cloud API or Evolution) |
+| `GET`  | `/health`                          | Health check (MongoDB ping)                        |
+| `GET`  | `/admin/conversations`             | List recent conversations                          |
+| `GET`  | `/admin/conversations/{phone}`     | View full conversation                             |
+| `GET`  | `/admin/metrics/funnel?hours=24`   | Stage drop-off funnel                              |
+| `GET`  | `/admin/metrics/outcomes?hours=24` | Conversion outcomes                                |
+| `GET`  | `/admin/metrics/errors?hours=24`   | Integration error rates                            |
 
 ## WhatsApp Message Style
 
